@@ -4,7 +4,6 @@
 
 <p align="center">A progressive PHP framework for building efficient and scalable web applications.</p>
 
-
 # AssegaiPHP Beanstalkd Queue Integration
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
