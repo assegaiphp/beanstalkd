@@ -1,6 +1,6 @@
 <?php
 
-namespace Assegaiphp\Beanstalkd;
+namespace Assegai\Beanstalkd;
 
 use Assegai\Common\Interfaces\Queues\QueueProcessResultInterface;
 use Throwable;

@@ -1,6 +1,6 @@
 <?php
 
-namespace Assegaiphp\Beanstalkd;
+namespace Assegai\Beanstalkd;
 
 use Assegai\Common\Exceptions\QueueException;
 use Assegai\Common\Interfaces\Queues\QueueInterface;
@@ -15,6 +15,12 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Logger\ConsoleLogger;
 use Symfony\Component\Console\Output\ConsoleOutput;
 
+/**
+ * Class BeanstalkQueue
+ *
+ * Represents a Beanstalk queue implementation.
+ * @implements QueueInterface
+ */
 class BeanstalkQueue implements QueueInterface
 {
   /**
