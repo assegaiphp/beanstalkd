@@ -1,0 +1,22 @@
+{
+    "name": "assegaiphp/beanstalkd",
+    "description": "Beanstalkd queue integration for AssegaiPHP framework, enabling job production and consumption using the Pheanstalk library.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Assegaiphp\\Beanstalkd\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Andrew Masiye",
+            "email": "amasiye313@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "assegaiphp/common": "^0.4.4",
+        "pda/pheanstalk": "^7.0"
+    }
+}
