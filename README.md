@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/assegaiphp/beanstalkd/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/assegaiphp/beanstalkd?display_name=tag&sort=semver&style=flat-square"></a>
   <a href="https://github.com/assegaiphp/beanstalkd/actions/workflows/php.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/assegaiphp/beanstalkd/php.yml?branch=main&label=tests&style=flat-square"></a>
-  <img alt="PHP 8.3+" src="https://img.shields.io/badge/PHP-8.3%2B-777BB4?style=flat-square&logo=php&logoColor=white">
+  <img alt="PHP 8.4+" src="https://img.shields.io/badge/PHP-8.4%2B-777BB4?style=flat-square&logo=php&logoColor=white">
   <a href="https://github.com/assegaiphp/beanstalkd/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/assegaiphp/beanstalkd?style=flat-square"></a>
   <img alt="Status active" src="https://img.shields.io/badge/status-active-10b981?style=flat-square">
 </p>
@@ -15,6 +15,14 @@
 # AssegaiPHP Beanstalkd Queue Integration
 
 This package adds **Beanstalkd queue support** to the [AssegaiPHP](https://github.com/assegaiphp/framework) framework using the [Pheanstalk](https://github.com/pda/pheanstalk) PHP client.
+
+---
+
+## Contribution workflow
+
+For commit and pull request conventions in this repo, see:
+
+- [docs/commit-and-pr-guidelines.md](./docs/commit-and-pr-guidelines.md)
 
 ---
 

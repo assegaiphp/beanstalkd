@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "bdf104625029aac91d3f4aa682e833bf",
+    "content-hash": "2adc070444c31ba5e0c5b2355b2781ed",
     "packages": [
         {
             "name": "assegaiphp/attributes",
@@ -3234,7 +3234,7 @@
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
-        "php": ">=8.3"
+        "php": ">=8.4"
     },
     "platform-dev": {},
     "plugin-api-version": "2.9.0"
