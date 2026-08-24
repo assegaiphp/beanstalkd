@@ -40,6 +40,15 @@ Or use the Assegai CLI:
 assegai add beanstalkd
 ```
 
+## Compatibility
+
+| Beanstalkd package | AssegaiPHP Common |
+| --- | --- |
+| `1.1.x` | `^0.10.0` |
+| `1.0.x` | `^0.9.0` |
+
+Applications moving to the AssegaiPHP 0.10 release line should upgrade this package and the coordinated first-party dependencies together.
+
 ---
 
 ## ⚙️ Configuration
