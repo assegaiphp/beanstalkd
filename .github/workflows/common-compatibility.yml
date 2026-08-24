@@ -18,6 +18,8 @@ permissions:
 jobs:
   common-compatibility:
     runs-on: ubuntu-24.04
+    env:
+      COMMON_PACKAGE: assegaiphp/common
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +39,7 @@ jobs:
         shell: bash
         run: |
           latest="$(
-            composer show assegaiphp/common --all --format=json |
+            composer show "$COMMON_PACKAGE" --all --format=json |
               php -r '
                 $package = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
                 $versions = array_values(array_filter(
@@ -54,11 +56,11 @@ jobs:
             exit 1
           fi
 
-          constraint="$(php -r '$composer = json_decode(file_get_contents("composer.json"), true, flags: JSON_THROW_ON_ERROR); echo $composer["require"]["assegaiphp/common"] ?? "";')"
+          constraint="$(php -r '$composer = json_decode(file_get_contents("composer.json"), true, flags: JSON_THROW_ON_ERROR); echo $composer["require"][getenv("COMMON_PACKAGE")] ?? "";')"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "constraint=$constraint" >> "$GITHUB_OUTPUT"
 
-          if composer prohibits assegai/common "$latest" --locked; then
+          if composer prohibits "$COMMON_PACKAGE" "$latest" --locked; then
             echo "compatible=true" >> "$GITHUB_OUTPUT"
           else
             echo "compatible=false" >> "$GITHUB_OUTPUT"
