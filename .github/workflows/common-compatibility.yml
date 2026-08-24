@@ -1,0 +1,107 @@
+name: Common compatibility
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+    paths:
+      - "composer.json"
+      - "composer.lock"
+      - ".github/workflows/common-compatibility.yml"
+  schedule:
+    - cron: "29 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  common-compatibility:
+    runs-on: ubuntu-24.04
+    env:
+      COMMON_PACKAGE: assegaiphp/common
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          coverage: none
+          tools: composer:v2
+
+      - name: Install locked dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Check the newest stable Common release
+        id: compatibility
+        shell: bash
+        run: |
+          latest="$(
+            composer show "$COMMON_PACKAGE" --all --format=json |
+              php -r '
+                $package = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
+                $versions = array_values(array_filter(
+                  $package["versions"] ?? [],
+                  static fn (string $version): bool => preg_match("/^[vV]?\\d+\\.\\d+\\.\\d+$/", $version) === 1,
+                ));
+                usort($versions, static fn (string $left, string $right): int => version_compare(ltrim($right, "vV"), ltrim($left, "vV")));
+                echo isset($versions[0]) ? ltrim($versions[0], "vV") : "";
+              '
+          )"
+
+          if [ -z "$latest" ]; then
+            echo "No stable assegai/common release could be resolved." >&2
+            exit 1
+          fi
+
+          constraint="$(php -r '$composer = json_decode(file_get_contents("composer.json"), true, flags: JSON_THROW_ON_ERROR); echo $composer["require"][getenv("COMMON_PACKAGE")] ?? "";')"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "constraint=$constraint" >> "$GITHUB_OUTPUT"
+
+          if composer prohibits "$COMMON_PACKAGE" "$latest" --locked; then
+            echo "compatible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "compatible=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Synchronize the dependency maintenance issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPATIBLE: ${{ steps.compatibility.outputs.compatible }}
+          CONSTRAINT: ${{ steps.compatibility.outputs.constraint }}
+          LATEST: ${{ steps.compatibility.outputs.latest }}
+        shell: bash
+        run: |
+          title="Update assegai/common compatibility"
+          issue_number="$(
+            gh issue list --state open --search "$title in:title" --json number,title \
+              --jq ".[] | select(.title == \"$title\") | .number" |
+              head -n 1
+          )"
+
+          if [ "$COMPATIBLE" = "true" ]; then
+            if [ -n "$issue_number" ]; then
+              gh issue close "$issue_number" --comment "The declared constraint now accepts the latest stable Common release ($LATEST)."
+            fi
+            exit 0
+          fi
+
+          report="$RUNNER_TEMP/common-compatibility.md"
+          printf '%s\n' \
+            "The scheduled compatibility check found a newer stable \`assegaiphp/common\` release that this package does not accept." \
+            "" \
+            "- Declared constraint: \`$CONSTRAINT\`" \
+            "- Latest stable release: \`$LATEST\`" \
+            "" \
+            "Prepare the next compatible package release on \`develop\`, validate it, and use the normal \`develop\` → \`main\` pull request. This workflow does not create branches." \
+            > "$report"
+
+          if [ -n "$issue_number" ]; then
+            gh issue edit "$issue_number" --body-file "$report"
+          else
+            gh issue create --title "$title" --body-file "$report"
+          fi
+
+          exit 1

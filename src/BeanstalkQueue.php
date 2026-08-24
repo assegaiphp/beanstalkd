@@ -7,7 +7,9 @@ use Assegai\Common\Interfaces\Queues\QueueInterface;
 use Assegai\Common\Interfaces\Queues\QueueProcessResultInterface;
 use Exception;
 use JsonException;
+use Pheanstalk\Contract\PheanstalkManagerInterface;
 use Pheanstalk\Contract\PheanstalkPublisherInterface;
+use Pheanstalk\Contract\PheanstalkSubscriberInterface;
 use Pheanstalk\Pheanstalk;
 use Pheanstalk\Values\Timeout;
 use Pheanstalk\Values\TubeName;
@@ -30,7 +32,7 @@ class BeanstalkQueue implements QueueInterface
   /**
    * @var Pheanstalk The connection to the Beanstalk server.
    */
-  protected Pheanstalk $connection;
+  protected PheanstalkManagerInterface&PheanstalkPublisherInterface&PheanstalkSubscriberInterface $connection;
   /**
    * @var TubeName The name of the tube (queue) in Beanstalk.
    */
@@ -101,6 +103,7 @@ class BeanstalkQueue implements QueueInterface
 
       $this->logger->info("Processing job: " . $payload);
       $result = new BeanstalkQueueProcessResult($callback($payload));
+      $this->connection->delete($job); // Delete the job after processing
     } catch(Exception $exception) {
       $this->logger->error("Failed to process job: " . $exception->getMessage());
       $this->connection->release($job);
@@ -109,7 +112,6 @@ class BeanstalkQueue implements QueueInterface
       );
     }
 
-    $this->connection->delete($job); // Delete the job after processing
     return $result;
   }
 
@@ -140,7 +142,7 @@ class BeanstalkQueue implements QueueInterface
    */
   public static function create(array $config): self
   {
-    $name ??= $config['name'] ?? 'default';
+    $name = $config['name'] ?? 'default';
 
     $connectionTimeout  = $config['connection_timeout'] ?? null;
     $receiveTimeout     = $config['receive_timeout'] ?? null;
@@ -153,7 +155,7 @@ class BeanstalkQueue implements QueueInterface
       $receiveTimeout = new Timeout($receiveTimeout);
     }
 
-    return new self(
+    return new static(
       $name,
       $config['host'] ?? null,
       $config['port'] ?? BeanstalkQueue::DEFAULT_PORT,
