@@ -24,6 +24,21 @@ use Psr\Log\NullLogger;
 
 final class BeanstalkQueueTest extends TestCase
 {
+  public function testConstructionDefersConnectionAndFailedAttemptsCanRetry(): void
+  {
+    $queue = new FailingConnectionBeanstalkQueue('notifications');
+
+    self::assertSame('notifications', $queue->getName());
+    self::assertSame(0, $queue->connectionAttempts);
+
+    $first = $queue->process(static fn (BeanstalkTestJob $job): null => null);
+    $second = $queue->process(static fn (BeanstalkTestJob $job): null => null);
+
+    self::assertTrue($first->isError());
+    self::assertTrue($second->isError());
+    self::assertSame(2, $queue->connectionAttempts);
+  }
+
   public function testCreateNormalizesTimeoutsAndDefaults(): void
   {
     $queue = InspectableBeanstalkQueue::create([
@@ -156,6 +171,18 @@ final readonly class BeanstalkTestJob
 {
   public function __construct(public string $task)
   {
+  }
+}
+
+final class FailingConnectionBeanstalkQueue extends BeanstalkQueue
+{
+  public int $connectionAttempts = 0;
+
+  protected function createConnection(): PheanstalkManagerInterface&PheanstalkPublisherInterface&PheanstalkSubscriberInterface
+  {
+    $this->connectionAttempts++;
+
+    throw new \RuntimeException('Beanstalkd is unavailable.');
   }
 }
 

@@ -27,14 +27,15 @@ use Throwable;
  */
 class BeanstalkQueue implements QueueInterface
 {
+  public const string DEFAULT_HOST = 'localhost';
   /**
    * @var int The default port for Beanstalk.
    */
   public const int DEFAULT_PORT = 11300;
   /**
-   * @var Pheanstalk The connection to the Beanstalk server.
+   * @var (PheanstalkManagerInterface&PheanstalkPublisherInterface&PheanstalkSubscriberInterface)|null The connection to the Beanstalk server.
    */
-  protected PheanstalkManagerInterface&PheanstalkPublisherInterface&PheanstalkSubscriberInterface $connection;
+  protected (PheanstalkManagerInterface&PheanstalkPublisherInterface&PheanstalkSubscriberInterface)|null $connection = null;
   /**
    * @var TubeName The name of the tube (queue) in Beanstalk.
    */
@@ -54,7 +55,6 @@ class BeanstalkQueue implements QueueInterface
    * @param int $reserveTimeout Seconds to wait for one available job.
    * @param int $retryPriority Priority applied when releasing a failed job.
    * @param int $retryDelay Seconds before a released job becomes ready again.
-   * @throws QueueException
    */
   public function __construct(
     protected string $name,
@@ -70,15 +70,7 @@ class BeanstalkQueue implements QueueInterface
   {
     $this->logger = new ConsoleLogger(new ConsoleOutput());
     $this->jobCodec = $jobCodec ?? new JsonQueueJobCodec();
-
-    try {
-      $this->connection = Pheanstalk::create($this->host, $this->port, $this->connectionTimeout, $this->receiveTimeout);
-
-      $this->tubeName = new TubeName($this->name);
-      $this->connection->useTube($this->tubeName);
-    } catch (Throwable $throwable) {
-      throw $this->queueException('Failed to connect to Beanstalkd.', $throwable);
-    }
+    $this->tubeName = new TubeName($this->name);
   }
 
   protected QueueJobCodecInterface $jobCodec;
@@ -90,16 +82,20 @@ class BeanstalkQueue implements QueueInterface
    */
   public function add(object $job, object|array|null $options = null): void
   {
-    $priority = (int) $this->option($options, 'priority', PheanstalkPublisherInterface::DEFAULT_PRIORITY);
-    $delay = (int) $this->option($options, 'delay', 30);
-    $timeToRelease = (int) $this->option($options, 'time_to_release', 60);
+    try {
+      $priority = (int) $this->option($options, 'priority', PheanstalkPublisherInterface::DEFAULT_PRIORITY);
+      $delay = (int) $this->option($options, 'delay', 30);
+      $timeToRelease = (int) $this->option($options, 'time_to_release', 60);
 
-    $this->connection->put(
-      data: $this->jobCodec->encode($job),
-      priority: $priority,
-      delay: $delay,
-      timeToRelease: $timeToRelease
-    );
+      $this->connection()->put(
+        data: $this->jobCodec->encode($job),
+        priority: $priority,
+        delay: $delay,
+        timeToRelease: $timeToRelease
+      );
+    } catch (Throwable $throwable) {
+      throw $this->queueException('Failed to add Beanstalkd job.', $throwable);
+    }
   }
 
   /**
@@ -111,15 +107,17 @@ class BeanstalkQueue implements QueueInterface
     $reservedJob = null;
     $job = null;
     $callbackSucceeded = false;
+    $connection = null;
 
     try {
-      $watchedTubeCount = $this->connection->watch($this->tubeName);
+      $connection = $this->connection();
+      $watchedTubeCount = $connection->watch($this->tubeName);
 
       if ($this->name !== 'default' && $watchedTubeCount > 1) {
-        $this->connection->ignore(new TubeName('default'));
+        $connection->ignore(new TubeName('default'));
       }
 
-      $reservedJob = $this->connection->reserveWithTimeout(max(0, $this->reserveTimeout));
+      $reservedJob = $connection->reserveWithTimeout(max(0, $this->reserveTimeout));
 
       if ($reservedJob === null) {
         return new BeanstalkQueueProcessResult();
@@ -134,16 +132,16 @@ class BeanstalkQueue implements QueueInterface
       $this->logger->info("Processing job: " . $payload);
       $data = $callback($job);
       $callbackSucceeded = true;
-      $this->connection->delete($reservedJob);
+      $connection->delete($reservedJob);
 
       return new BeanstalkQueueProcessResult(data: $data, job: $job);
     } catch (Throwable $throwable) {
       $this->logger->error("Failed to process job: " . $throwable->getMessage());
       $errors = [$this->queueException('Queue processing failed.', $throwable)];
 
-      if ($reservedJob !== null && !$callbackSucceeded) {
+      if ($connection !== null && $reservedJob !== null && !$callbackSucceeded) {
         try {
-          $this->connection->release($reservedJob, $this->retryPriority, $this->retryDelay);
+          $connection->release($reservedJob, $this->retryPriority, $this->retryDelay);
         } catch (Throwable $settlementError) {
           $errors[] = $this->queueException('Failed to release Beanstalkd job.', $settlementError);
         }
@@ -171,7 +169,7 @@ class BeanstalkQueue implements QueueInterface
   public function getTotalJobs(): int
   {
     try {
-      return $this->connection->statsTube($this->tubeName)->currentJobsReady;
+      return $this->connection()->statsTube($this->tubeName)->currentJobsReady;
     } catch (Throwable $throwable) {
       throw $this->queueException('Failed to get total jobs.', $throwable);
     }
@@ -212,6 +210,41 @@ class BeanstalkQueue implements QueueInterface
       max(0, (int) ($config['reserve_timeout'] ?? 0)),
       (int) ($config['retry_priority'] ?? PheanstalkPublisherInterface::DEFAULT_PRIORITY),
       max(0, (int) ($config['retry_delay'] ?? PheanstalkPublisherInterface::DEFAULT_DELAY)),
+    );
+  }
+
+  /**
+   * Returns the active client, connecting and selecting the tube on first use.
+   *
+   * A failed attempt is not cached, allowing a later queue operation to retry.
+   *
+   * @return PheanstalkManagerInterface&PheanstalkPublisherInterface&PheanstalkSubscriberInterface
+   * @throws QueueException
+   */
+  protected function connection(): PheanstalkManagerInterface&PheanstalkPublisherInterface&PheanstalkSubscriberInterface
+  {
+    if ($this->connection !== null) {
+      return $this->connection;
+    }
+
+    try {
+      $connection = $this->createConnection();
+      $connection->useTube($this->tubeName);
+
+      return $this->connection = $connection;
+    } catch (Throwable $throwable) {
+      throw $this->queueException('Failed to connect to Beanstalkd.', $throwable);
+    }
+  }
+
+  /** @return PheanstalkManagerInterface&PheanstalkPublisherInterface&PheanstalkSubscriberInterface */
+  protected function createConnection(): PheanstalkManagerInterface&PheanstalkPublisherInterface&PheanstalkSubscriberInterface
+  {
+    return Pheanstalk::create(
+      $this->host ?? self::DEFAULT_HOST,
+      $this->port ?? self::DEFAULT_PORT,
+      $this->connectionTimeout,
+      $this->receiveTimeout,
     );
   }
 
