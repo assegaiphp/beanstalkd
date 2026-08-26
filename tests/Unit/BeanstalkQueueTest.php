@@ -4,6 +4,8 @@ namespace Tests\Unit;
 
 use Assegai\Beanstalkd\BeanstalkQueue;
 use Assegai\Common\Exceptions\QueueException;
+use Assegai\Common\Interfaces\Queues\QueueJobCodecInterface;
+use Assegai\Common\Queues\JsonQueueJobCodec;
 use BadMethodCallException;
 use PHPUnit\Framework\TestCase;
 use Pheanstalk\Contract\JobIdInterface;
@@ -19,7 +21,6 @@ use Pheanstalk\Values\TubeList;
 use Pheanstalk\Values\TubeName;
 use Pheanstalk\Values\TubeStats;
 use Psr\Log\NullLogger;
-use RuntimeException;
 
 final class BeanstalkQueueTest extends TestCase
 {
@@ -35,6 +36,26 @@ final class BeanstalkQueueTest extends TestCase
     self::assertSame(BeanstalkQueue::DEFAULT_PORT, $queue->captured['port']);
     self::assertInstanceOf(Timeout::class, $queue->captured['connectionTimeout']);
     self::assertInstanceOf(Timeout::class, $queue->captured['receiveTimeout']);
+    self::assertSame(0, $queue->captured['reserveTimeout']);
+    self::assertSame(PheanstalkPublisherInterface::DEFAULT_PRIORITY, $queue->captured['retryPriority']);
+    self::assertSame(PheanstalkPublisherInterface::DEFAULT_DELAY, $queue->captured['retryDelay']);
+  }
+
+  public function testCreateForwardsCodecAndRetryConfiguration(): void
+  {
+    $codec = new JsonQueueJobCodec();
+    $queue = InspectableBeanstalkQueue::create([
+      'name' => 'notifications',
+      'job_codec' => $codec,
+      'reserve_timeout' => 3,
+      'retry_priority' => 512,
+      'retry_delay' => 15,
+    ]);
+
+    self::assertSame($codec, $queue->captured['jobCodec']);
+    self::assertSame(3, $queue->captured['reserveTimeout']);
+    self::assertSame(512, $queue->captured['retryPriority']);
+    self::assertSame(15, $queue->captured['retryDelay']);
   }
 
   public function testAddPushesJsonWithExpectedDefaults(): void
@@ -44,53 +65,97 @@ final class BeanstalkQueueTest extends TestCase
     $queue = new TestBeanstalkQueue();
     $queue->prime('notifications', $connection);
 
-    $queue->add((object) ['task' => 'notify']);
+    $queue->add(new BeanstalkTestJob('notify'));
 
     self::assertCount(1, $connection->putCalls);
-    self::assertSame(
-      [
-        'data' => json_encode((object) ['task' => 'notify'], JSON_THROW_ON_ERROR),
-        'priority' => PheanstalkPublisherInterface::DEFAULT_PRIORITY,
-        'delay' => 30,
-        'timeToRelease' => 60,
-      ],
-      $connection->putCalls[0]
-    );
+    $payload = json_decode($connection->putCalls[0]['data'], true, 512, JSON_THROW_ON_ERROR);
+    self::assertSame(BeanstalkTestJob::class, $payload['_assegai_queue']['job']);
+    self::assertSame('notify', $payload['payload']['task']);
+    self::assertSame(PheanstalkPublisherInterface::DEFAULT_PRIORITY, $connection->putCalls[0]['priority']);
+    self::assertSame(30, $connection->putCalls[0]['delay']);
+    self::assertSame(60, $connection->putCalls[0]['timeToRelease']);
   }
 
   public function testProcessDeletesSuccessfulJobs(): void
   {
     $connection = new FakePheanstalkClient();
-    $connection->reservedJob = new Job(new JobId('1'), '{"id":1}');
+    $connection->reservedJob = new Job(new JobId('1'), '{"task":"notify"}');
 
     $queue = new TestBeanstalkQueue();
     $queue->prime('notifications', $connection);
 
-    $result = $queue->process(static fn (string $payload): array => json_decode($payload, true, 512, JSON_THROW_ON_ERROR));
+    $result = $queue->process(static fn (BeanstalkTestJob $job): string => strtoupper($job->task));
 
     self::assertSame('notifications', $connection->watchedTube?->value);
+    self::assertSame(['default'], $connection->ignoredTubes);
+    self::assertSame([0], $connection->reserveTimeoutCalls);
     self::assertSame(1, $connection->deleteCalls);
-    self::assertSame(0, $connection->releaseCalls);
+    self::assertSame([], $connection->releaseCalls);
     self::assertTrue($result->isOk());
-    self::assertSame(['id' => 1], $result->getData());
+    self::assertSame('NOTIFY', $result->getData());
+    self::assertInstanceOf(BeanstalkTestJob::class, $result->getJob());
+    self::assertSame('notify', $result->getJob()?->task);
   }
 
-  public function testProcessReleasesFailedJobsWithoutDeletingThem(): void
+  public function testProcessReleasesEveryThrowableWithoutDeletingTheJob(): void
   {
     $connection = new FakePheanstalkClient();
-    $connection->reservedJob = new Job(new JobId('2'), '{"id":2}');
+    $connection->reservedJob = new Job(new JobId('2'), '{"task":"notify"}');
 
     $queue = new TestBeanstalkQueue();
-    $queue->prime('notifications', $connection);
+    $queue->prime('notifications', $connection, retryPriority: 512, retryDelay: 15);
 
-    $result = $queue->process(static function (): never {
-      throw new RuntimeException('boom');
+    $result = $queue->process(static function (BeanstalkTestJob $job): never {
+      throw new \TypeError('boom');
     });
 
-    self::assertSame(1, $connection->releaseCalls);
+    self::assertSame([['job' => $connection->reservedJob, 'priority' => 512, 'delay' => 15]], $connection->releaseCalls);
     self::assertSame(0, $connection->deleteCalls);
     self::assertTrue($result->isError());
     self::assertInstanceOf(QueueException::class, $result->getNextError());
+    self::assertInstanceOf(\TypeError::class, $result->getNextError()?->getPrevious());
+    self::assertInstanceOf(BeanstalkTestJob::class, $result->getJob());
+  }
+
+  public function testProcessReturnsAnEmptyResultWhenReserveTimesOut(): void
+  {
+    $connection = new FakePheanstalkClient();
+    $queue = new TestBeanstalkQueue();
+    $queue->prime('notifications', $connection, reserveTimeout: 2);
+
+    $result = $queue->process(static fn (BeanstalkTestJob $job): null => null);
+
+    self::assertSame([2], $connection->reserveTimeoutCalls);
+    self::assertTrue($result->isOk());
+    self::assertNull($result->getJob());
+  }
+
+  public function testProcessReleasesMalformedJobsBeforeCallingTheProcessor(): void
+  {
+    $connection = new FakePheanstalkClient();
+    $connection->reservedJob = new Job(new JobId('3'), '{invalid-json');
+
+    $queue = new TestBeanstalkQueue();
+    $queue->prime('notifications', $connection, retryPriority: 512, retryDelay: 15);
+    $processorCalled = false;
+
+    $result = $queue->process(static function (BeanstalkTestJob $job) use (&$processorCalled): void {
+      $processorCalled = true;
+    });
+
+    self::assertFalse($processorCalled);
+    self::assertSame([['job' => $connection->reservedJob, 'priority' => 512, 'delay' => 15]], $connection->releaseCalls);
+    self::assertSame(0, $connection->deleteCalls);
+    self::assertTrue($result->isError());
+    self::assertInstanceOf(QueueException::class, $result->getNextError());
+    self::assertNull($result->getJob());
+  }
+}
+
+final readonly class BeanstalkTestJob
+{
+  public function __construct(public string $task)
+  {
   }
 }
 
@@ -100,12 +165,22 @@ final class TestBeanstalkQueue extends BeanstalkQueue
   {
   }
 
-  public function prime(string $name, FakePheanstalkClient $connection): void
-  {
+  public function prime(
+    string $name,
+    FakePheanstalkClient $connection,
+    ?QueueJobCodecInterface $jobCodec = null,
+    int $reserveTimeout = 0,
+    int $retryPriority = PheanstalkPublisherInterface::DEFAULT_PRIORITY,
+    int $retryDelay = PheanstalkPublisherInterface::DEFAULT_DELAY,
+  ): void {
     $this->name = $name;
     $this->connection = $connection;
     $this->tubeName = new TubeName($name);
     $this->logger = new NullLogger();
+    $this->jobCodec = $jobCodec ?? new JsonQueueJobCodec();
+    $this->reserveTimeout = $reserveTimeout;
+    $this->retryPriority = $retryPriority;
+    $this->retryDelay = $retryDelay;
   }
 }
 
@@ -119,6 +194,10 @@ final class InspectableBeanstalkQueue extends BeanstalkQueue
     ?int $port = null,
     ?Timeout $connectionTimeout = null,
     ?Timeout $receiveTimeout = null,
+    ?QueueJobCodecInterface $jobCodec = null,
+    int $reserveTimeout = 0,
+    int $retryPriority = PheanstalkPublisherInterface::DEFAULT_PRIORITY,
+    int $retryDelay = PheanstalkPublisherInterface::DEFAULT_DELAY,
   ) {
     $this->captured = [
       'name' => $name,
@@ -126,6 +205,10 @@ final class InspectableBeanstalkQueue extends BeanstalkQueue
       'port' => $port,
       'connectionTimeout' => $connectionTimeout,
       'receiveTimeout' => $receiveTimeout,
+      'jobCodec' => $jobCodec,
+      'reserveTimeout' => $reserveTimeout,
+      'retryPriority' => $retryPriority,
+      'retryDelay' => $retryDelay,
     ];
 
     $this->name = $name;
@@ -138,7 +221,9 @@ final class FakePheanstalkClient implements PheanstalkManagerInterface, Pheansta
   public ?Job $reservedJob = null;
   public array $putCalls = [];
   public int $deleteCalls = 0;
-  public int $releaseCalls = 0;
+  public array $releaseCalls = [];
+  public array $reserveTimeoutCalls = [];
+  public array $ignoredTubes = [];
 
   public function disconnect(): void
   {
@@ -177,7 +262,9 @@ final class FakePheanstalkClient implements PheanstalkManagerInterface, Pheansta
 
   public function ignore(TubeName $tube): int
   {
-    throw new BadMethodCallException('Not used in this test.');
+    $this->ignoredTubes[] = $tube->value;
+
+    return 1;
   }
 
   public function listTubesWatched(): TubeList
@@ -190,7 +277,11 @@ final class FakePheanstalkClient implements PheanstalkManagerInterface, Pheansta
     int $priority = PheanstalkPublisherInterface::DEFAULT_PRIORITY,
     int $delay = PheanstalkPublisherInterface::DEFAULT_DELAY
   ): void {
-    $this->releaseCalls++;
+    $this->releaseCalls[] = [
+      'job' => $job,
+      'priority' => $priority,
+      'delay' => $delay,
+    ];
   }
 
   public function reserve(): Job
@@ -214,7 +305,9 @@ final class FakePheanstalkClient implements PheanstalkManagerInterface, Pheansta
 
   public function reserveWithTimeout(int $timeout): ?Job
   {
-    throw new BadMethodCallException('Not used in this test.');
+    $this->reserveTimeoutCalls[] = $timeout;
+
+    return $this->reservedJob;
   }
 
   public function touch(JobIdInterface $job): void
@@ -226,7 +319,7 @@ final class FakePheanstalkClient implements PheanstalkManagerInterface, Pheansta
   {
     $this->watchedTube = $tube;
 
-    return 1;
+    return $tube->value === 'default' ? 1 : 2;
   }
 
   public function kick(int $max): int

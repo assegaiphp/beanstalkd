@@ -16,7 +16,7 @@
   ],
   "require": {
     "php": ">=8.4",
-    "assegaiphp/common": "^0.10.0",
+    "assegaiphp/common": "^0.10.1",
     "pda/pheanstalk": "^7.0"
   },
   "require-dev": {
