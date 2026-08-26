@@ -40,7 +40,8 @@ $ assegai add beanstalkd
 
 | Beanstalkd package | AssegaiPHP Common |
 | --- | --- |
-| `>=1.1.1 <2.0` | `^0.10.1` |
+| `>=1.1.2 <2.0` | `^0.10.1` |
+| `1.1.1` | `^0.10.1` |
 | `1.1.0` | `^0.10.0` |
 | `1.0.x` | `^0.9.0` |
 
@@ -76,6 +77,8 @@ return [
 ```
 
 Queue references use the `driver.connection` format, such as `beanstalk.notifications`.
+
+Creating or injecting a queue is configuration-only. The driver opens the Beanstalkd connection and selects its tube on the first broker operation. This allows an HTTP application to boot while Beanstalkd is temporarily unavailable; the operation that needs Beanstalkd receives the connection error and a later operation can retry.
 
 Each worker poll watches only the configured tube and reserves at most one job. Successful processing deletes the job. A decoding or processor failure releases it with `retry_priority` and `retry_delay`. Use a non-zero retry delay in production to avoid a tight failure loop.
 
