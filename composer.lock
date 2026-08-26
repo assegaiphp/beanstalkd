@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "0a8338d2fe653b7099467963d9ca4354",
+    "content-hash": "bae777a6e81d2f165e28ec04b0d8772a",
     "packages": [
         {
             "name": "assegaiphp/attributes",
@@ -52,17 +52,11 @@
         },
         {
             "name": "assegaiphp/common",
-            "version": "0.10.0",
+            "version": "0.10.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/assegaiphp/common.git",
-                "reference": "6dc41086940414db87c83ed93f147fe76d05ef55"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/assegaiphp/common/zipball/6dc41086940414db87c83ed93f147fe76d05ef55",
-                "reference": "6dc41086940414db87c83ed93f147fe76d05ef55",
-                "shasum": ""
+                "reference": "6af8b3f796e09109e1984297acc1b1a5e938eeb4"
             },
             "require": {
                 "assegaiphp/attributes": "^1.0",
@@ -71,31 +65,15 @@
                 "psr/log": "^3.0",
                 "symfony/console": "^8.0"
             },
-            "require-dev": {
-                "pestphp/pest": "^4.4"
-            },
             "type": "library",
             "autoload": {
                 "psr-4": {
                     "Assegai\\Common\\": "src/"
                 }
             },
-            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Andrew Masiye",
-                    "email": "andrew.masiye@assegaihphp.com"
-                }
-            ],
-            "description": "The assegai/common package is a collection of commonly used utility classes and functions for AssegaiPHP projects. This package provides a set of tools that are designed to make it easier for developers to perform common tasks such as working with arrays, strings, and paths. The package also includes classes for handling errors and logging, as well as a simple yet powerful configuration management system. The package is designed to be lightweight, with minimal dependencies, and is fully compatible with any AssegaiPHP based project. Whether you're building a small web application or a large enterprise system, assegai/common provides the essential building blocks you need to get started quickly and easily.",
-            "support": {
-                "issues": "https://github.com/assegaiphp/common/issues",
-                "source": "https://github.com/assegaiphp/common/tree/0.10.0"
-            },
-            "time": "2026-08-24T12:55:11+00:00"
+            ]
         },
         {
             "name": "guzzlehttp/guzzle",
