@@ -24,13 +24,13 @@ For commit and pull request conventions in this repo, see:
 
 ## Installation
 
-Install the package with Composer:
+The planned `1.2` adapter line accompanies AssegaiPHP `0.11`. After the coordinated releases are published, install it with Composer:
 
 ```bash
-$ composer require assegaiphp/beanstalkd
+$ composer require "assegaiphp/beanstalkd:~1.2.0" --with-all-dependencies
 ```
 
-Inside an Assegai workspace, the Console can install and configure it:
+Inside an Assegai workspace, the coordinated Console `0.11.1` can install and configure it once those releases are available:
 
 ```bash
 $ assegai add beanstalkd
@@ -40,12 +40,15 @@ $ assegai add beanstalkd
 
 | Beanstalkd package | AssegaiPHP Common |
 | --- | --- |
-| `>=1.1.2 <2.0` | `^0.10.1` |
+| `1.2.x` (planned) | `^0.10.1 \|\| ~0.11.0` |
+| `1.1.2` | `^0.10.1` |
 | `1.1.1` | `^0.10.1` |
 | `1.1.0` | `^0.10.0` |
-| `1.0.x` | `^0.9.0` |
+| `1.0.0`, `1.0.1` | `^0.4.4` |
 
 Upgrade this package and its coordinated first-party dependencies together when moving between AssegaiPHP release lines.
+
+Adapter `1.2` retains Common `^0.10.1` compatibility and adds the planned `~0.11.0` line. Its `1.2.0` release is part of the coordinated framework `0.11` release; applications may retain their supported Common `0.10` requirements. For a framework `0.11` migration, the recommended stack uses Core `~0.11.1` and Console `~0.11.1`. See the [planned 1.2.0 upgrade notes](docs/releases/1.2.0.md).
 
 ## Configuration
 
