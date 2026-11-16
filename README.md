@@ -40,15 +40,15 @@ $ assegai add beanstalkd
 
 | Beanstalkd package | AssegaiPHP Common |
 | --- | --- |
-| `1.2.x` (planned) | `~0.11.0` |
-| `>=1.1.2 <1.2.0` | `^0.10.1` |
+| `1.2.x` (planned) | `^0.10.1 \|\| ~0.11.0` |
+| `1.1.2` | `^0.10.1` |
 | `1.1.1` | `^0.10.1` |
 | `1.1.0` | `^0.10.0` |
-| `1.0.x` | `^0.9.0` |
+| `1.0.0`, `1.0.1` | `^0.4.4` |
 
 Upgrade this package and its coordinated first-party dependencies together when moving between AssegaiPHP release lines.
 
-Adapter `1.2` removes support for Common `0.10`. Applications staying on AssegaiPHP `0.10` should keep adapter `~1.1.2`. For framework `0.11`, use Core `~0.11.1` and Console `~0.11.1` for the injection and worker examples below. See the [planned 1.2.0 upgrade notes](docs/releases/1.2.0.md).
+Adapter `1.2` retains Common `^0.10.1` compatibility and adds the planned `~0.11.0` line. Its `1.2.0` release is part of the coordinated framework `0.11` release; applications may retain their supported Common `0.10` requirements. For a framework `0.11` migration, the recommended stack uses Core `~0.11.1` and Console `~0.11.1`. See the [planned 1.2.0 upgrade notes](docs/releases/1.2.0.md).
 
 ## Configuration
 
